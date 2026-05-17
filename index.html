@@ -20,8 +20,17 @@
     <script type="text/babel">
        const { useState, useEffect } = React;
         const SUPABASE_URL = 'https://elypwtcxglccsfmhudei.supabase.co';
-        const SUPABASE_KEY = 'sb_secret_0MccHoj2rVK1SooIDyZJ-Q_26QgSx0R'; 
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const SUPABASE_KEY = 'sb_publishable_C26zYE5SpRKRgXYpsCDrpw_ggLVR7Aa'; 
+        
+        // On force l'application à cibler explicitement la branche 'main' de production
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+            db: {
+                schema: 'public'
+            },
+            headers: {
+                'x-supabase-branch': 'main'
+            }
+        });
         const styles = {
             container: { maxWidth: '600px', margin: 'auto', padding: '20px', minHeight: '100vh' },
             card: { backgroundColor: 'white', padding: '40px', borderRadius: '30px', boxShadow: '0 15px 35px rgba(0,0,0,0.05)', textAlign: 'center' },
