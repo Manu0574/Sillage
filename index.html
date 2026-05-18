@@ -18,199 +18,383 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+       const { useState, useEffect } = React;
         const SUPABASE_URL = 'https://elypwtcxglccsfmhudei.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_C26zYE5SpRKRgXYpsCDrpw_ggLVR7Aa'; 
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        // On force l'application à cibler explicitement la branche 'main' de production
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+            db: {
+                schema: 'public'
+            },
+            headers: {
+                'x-supabase-branch': 'main'
+            }
+        });
+        const styles = {
+            container: { maxWidth: '600px', margin: 'auto', padding: '20px', minHeight: '100vh' },
+            card: { backgroundColor: 'white', padding: '40px', borderRadius: '30px', boxShadow: '0 15px 35px rgba(0,0,0,0.05)', textAlign: 'center' },
+            title: { fontSize: '64px', fontWeight: 'bold', color: '#1a1a1a', marginBottom: '40px' },
+            btnAction: { width: '100%', padding: '25px', backgroundColor: '#27ae60', color: 'white', border: 'none', borderRadius: '20px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer' },
+            input: { width: '100%', padding: '18px', marginBottom: '15px', borderRadius: '12px', border: '2px solid #eee', fontSize: '18px', boxSizing: 'border-box' },
+            btnBack: { marginTop: '20px', background: 'none', border: 'none', color: '#888', textDecoration: 'underline', cursor: 'pointer', fontSize: '16px' },
+            adminContainer: { backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '20px', boxSizing: 'border-box' },
+            adminCard: { backgroundColor: '#1e293b', padding: '25px', borderRadius: '24px', border: '1px solid #334155', width: '100%', boxSizing: 'border-box', overflowX: 'auto' },
+            // Nouvelle Grille 2x2
+            adminGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' },
+            adminTile: { backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '24px', padding: '40px 20px', cursor: 'pointer', textAlign: 'center', transition: 'transform 0.2s' },
+            btnQuit: { gridColumn: 'span 2', marginTop: '10px', padding: '25px', borderRadius: '24px', backgroundColor: 'transparent', border: '2px solid #ef4444', color: '#ef4444', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer' },
+            adminInput: { width: '100%', padding: '15px', marginBottom: '15px', borderRadius: '12px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', boxSizing: 'border-box' },
+            adminTable: { width: '100%', borderCollapse: 'collapse', marginTop: '20px', color: '#f8fafc', fontSize: '13px', minWidth: '800px' },
+            adminTh: { textAlign: 'left', padding: '12px', color: '#3b82f6', borderBottom: '2px solid #334155' },
+            adminTd: { padding: '12px', borderBottom: '1px solid #334155' },
+            errorToast: { position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#ef4444', color: 'white', padding: '15px 30px', borderRadius: '15px', zIndex: 9999, fontWeight: 'bold' }
+        };
+
+        const labelsIncidents = { plein: "Plein/Recharge", voyant: "Voyant", niveaux: "Niveaux", bruit: "Bruit", nettoyage: "Nettoyage", accident: "Accident", infraction: "Infraction", probleme: "Prob. Méca/Elec" };
 
         function App() {
-            const [view, setView] = useState('conducteur'); // 'conducteur' ou 'admin'
-            const [isAdmin, setIsAdmin] = useState(false);
-            const [pinInput, setPinInput] = useState('');
             const [vehicules, setVehicules] = useState([]);
             const [utilisateurs, setUtilisateurs] = useState([]);
             const [voyages, setVoyages] = useState([]);
-            
-            // États pour la création
-            const [newVehicule, setNewVehicule] = useState({ nom: '', callSign: '', immatriculation: '' });
-            const [newUtilisateur, setNewUtilisateur] = useState({ nom: '', prenom: '', pin: '', statut: 'conducteur' });
-            
-            // ÉTAT AJOUTÉ : Pour la modification d'un véhicule
-            const [editingVehicule, setEditingVehicule] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [errorMsg, setErrorMsg] = useState('');
+            const [page, setPage] = useState('login');
+            const [user, setUser] = useState(null);
+            const [adminPin, setAdminPin] = useState('');
+            const [formLogin, setFormLogin] = useState({ id: '', pin: '' });
+            const [selectedV, setSelectedV] = useState(null);
+            const [sortieData, setSortieData] = useState({ destination: '', motif: '' });
+            const [editingItem, setEditingItem] = useState(null);
+            const [retourOptions, setRetourOptions] = useState({ plein: false, voyant: false, niveaux: false, bruit: false, nettoyage: false, accident: false, infraction: false, probleme: false, ras: false });
 
-            useEffect(() => {
-                fetchData();
-            }, []);
+            const showError = (msg) => { setErrorMsg(msg); setTimeout(() => setErrorMsg(''), 4000); };
 
             const fetchData = async () => {
                 const { data: v } = await supabaseClient.from('vehicules').select('*').order('callSign', { ascending: true });
                 const { data: u } = await supabaseClient.from('utilisateurs').select('*').order('nom', { ascending: true });
-                const { data: voy } = await supabaseClient.from('voyages').select('*').order('id', { descending: true });
+                const { data: log } = await supabaseClient.from('voyages').select('*').order('id', { ascending: false });
                 if (v) setVehicules(v);
                 if (u) setUtilisateurs(u);
-                if (voy) setVoyages(voy);
+                if (log) setVoyages(log);
+                setLoading(false);
             };
 
-            const handleLogin = () => {
-                if (pinInput === '0000') { // Ton code admin en dur
-                    setIsAdmin(true);
-                    setView('admin');
-                    setPinInput('');
-                } else {
-                    alert('Code PIN Admin incorrect');
-                }
-            };
+            useEffect(() => { fetchData(); }, []);
 
-            const addVehicule = async () => {
-                if (!newVehicule.nom || !newVehicule.callSign) return alert('Remplissez les champs obligatoires');
-                await supabaseClient.from('vehicules').insert([newVehicule]);
-                setNewVehicule({ nom: '', callSign: '', immatriculation: '' });
-                fetchData();
-            };
-
-            // NOUVELLE FONCTION : Soumettre la modification du véhicule
-            const updateVehicule = async () => {
-                if (!editingVehicule.nom || !editingVehicule.callSign) return alert('Remplissez les champs obligatoires');
-                await supabaseClient.from('vehicules').update({
-                    nom: editingVehicule.nom,
-                    callSign: editingVehicule.callSign,
-                    immatriculation: editingVehicule.immatriculation
-                }).eq('id', editingVehicule.id);
+            const exportCSV = (data, type) => {
+                let csv = type === 'hist' 
+                    ? "Date Sortie;Heure Sortie;Date Retour;Heure Retour;Conducteur;Vehicule;Destination;Motif;Incidents\n"
+                    : "Date Alerte;Vehicule;Marque;Modele;Conducteur;Problemes\n";
                 
-                setEditingVehicule(null); // Ferme le mode édition
-                fetchData(); // Rafraîchit la liste
+                data.forEach(v => {
+                    const u = utilisateurs.find(usr => usr.id === v.userId);
+                    const vh = vehicules.find(veh => veh.id === v.vehiculeId);
+                    if(type === 'hist') {
+                        const dS = new Date(v.id);
+                        const dR = v.date_retour ? new Date(v.date_retour) : null;
+                        csv += `${dS.toLocaleDateString()};${dS.toLocaleTimeString()};${dR ? dR.toLocaleDateString() : '-'};${dR ? dR.toLocaleTimeString() : '-'};${u?.nom} ${u?.prenom};${vh?.callSign};${v.destination};${v.motif};${v.incidents?.map(i => labelsIncidents[i] || i).join(', ') || ''}\n`;
+                    } else {
+                        csv += `${new Date(v.date_retour).toLocaleDateString()};${vh?.callSign};${vh?.marque};${vh?.modele};${u?.nom};${v.incidents?.map(i => labelsIncidents[i] || i).join(' / ')}\n`;
+                    }
+                });
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.setAttribute("download", `sillage_${type}.csv`);
+                link.click();
             };
 
-            const deleteVehicule = async (id) => {
-                if (confirm('Supprimer ce véhicule ?')) {
-                    await supabaseClient.from('vehicules').delete().eq('id', id);
-                    fetchData();
-                }
-            };
-
-            const addUtilisateur = async () => {
-                if (!newUtilisateur.nom || !newUtilisateur.prenom || !newUtilisateur.pin) return alert('Tous les champs sont requis');
-                await supabaseClient.from('utilisateurs').insert([newUtilisateur]);
-                setNewUtilisateur({ nom: '', prenom: '', pin: '', statut: 'conducteur' });
+            const logout = () => {
+                setUser(null); setPage('login'); setFormLogin({id:'', pin:''}); setAdminPin(''); 
+                setSelectedV(null); setSortieData({destination:'', motif:''});
+                setRetourOptions({ plein: false, voyant: false, niveaux: false, bruit: false, nettoyage: false, accident: false, infraction: false, probleme: false, ras: false });
                 fetchData();
             };
 
-            const deleteUtilisateur = async (id) => {
-                if (confirm('Supprimer cet utilisateur ?')) {
-                    await supabaseClient.from('utilisateurs').delete().eq('id', id);
-                    fetchData();
-                }
-            };
+            if (loading) return <div style={styles.adminContainer}>Chargement...</div>;
 
-            return (
-                <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-                    {/* Barre de navigation simplifiée */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', background: '#1e293b', padding: '15px', borderRadius: '8px', marginBottom: '20px', color: 'white', alignItems: 'center' }}>
-                        <h2 style={{ margin: 0 }}>Sillage Parc</h2>
-                        <div>
-                            <button onClick={() => setView('conducteur')} style={{ marginRight: '10px', padding: '8px 12px', background: view === 'conducteur' ? '#3b82f6' : '#475569', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Espace Conducteur</button>
-                            {isAdmin ? (
-                                <button onClick={() => setView('admin')} style={{ padding: '8px 12px', background: view === 'admin' ? '#3b82f6' : '#475569', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Espace Admin</button>
-                            ) : (
-                                <div style={{ display: 'inline-block' }}>
-                                    <input type="password" placeholder="Code Admin" value={pinInput} onChange={(e) => setPinInput(e.target.value)} style={{ padding: '8px', marginRight: '5px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                                    <button onClick={handleLogin} style={{ padding: '8px 12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Connexion</button>
+            const voyageActif = user ? voyages.find(v => v.userId === user.id && v.actif === true) : null;
+            const vehiculesLibres = vehicules.filter(v => v.statut === 'Libre');
+            const alertes = voyages.filter(v => v.incidents && v.incidents.length > 0 && !v.alerteResolue);
+            const utilisateursActifs = utilisateurs.filter(u => u.statut !== 'Inactif');
+
+            if (page.startsWith('admin_')) {
+                return (
+                    <div style={styles.adminContainer}>
+                        {errorMsg && <div style={styles.errorToast}>{errorMsg}</div>}
+                        <div style={{maxWidth: '1000px', margin: 'auto'}}>
+                            <h1 style={{fontSize:'32px', marginBottom:'30px', textAlign:'center'}}>Sillage <span style={{color: '#3b82f6'}}>Gestion</span></h1>
+                            
+                            {page === 'admin_login' && (
+                                <div style={{...styles.adminCard, maxWidth:'400px', margin:'40px auto'}}>
+                                    <h2 style={{textAlign:'center'}}>Accès Sécurisé</h2>
+                                    <input type="password" placeholder="PIN ADMIN" style={styles.adminInput} value={adminPin} onChange={e => setAdminPin(e.target.value)} />
+                                    <button onClick={() => adminPin === "0000" ? setPage('admin_dashboard') : showError("Code Incorrect")} style={{...styles.btnAction, backgroundColor:'#3b82f6', fontSize:'18px'}}>ACCÉDER</button>
+                                    <button onClick={logout} style={{...styles.btnBack, width:'100%'}}>Retour Borne</button>
+                                </div>
+                            )}
+
+                            {page === 'admin_dashboard' && (
+                                <div style={styles.adminGrid}>
+                                    <div style={styles.adminTile} onClick={() => setPage('admin_users')}>
+                                        <div style={{fontSize:'40px', marginBottom:'10px'}}>👥</div>
+                                        <h3 style={{margin:'0', fontSize:'22px'}}>Conducteurs</h3>
+                                        <p style={{color:'#3b82f6', fontSize:'18px'}}>{utilisateurs.length}</p>
+                                    </div>
+                                    <div style={styles.adminTile} onClick={() => setPage('admin_vehicules')}>
+                                        <div style={{fontSize:'40px', marginBottom:'10px'}}>🚗</div>
+                                        <h3 style={{margin:'0', fontSize:'22px'}}>Parc Auto</h3>
+                                        <p style={{color:'#3b82f6', fontSize:'18px'}}>{vehicules.length}</p>
+                                    </div>
+                                    <div style={styles.adminTile} onClick={() => setPage('admin_suivi')}>
+                                        <div style={{fontSize:'40px', marginBottom:'10px'}}>📊</div>
+                                        <h3 style={{margin:'0', fontSize:'22px'}}>Historique</h3>
+                                        <p style={{color:'#3b82f6', fontSize:'18px'}}>{voyages.length}</p>
+                                    </div>
+                                    <div style={styles.adminTile} onClick={() => setPage('admin_alertes')}>
+                                        <div style={{fontSize:'40px', marginBottom:'10px'}}>⚠️</div>
+                                        <h3 style={{margin:'0', fontSize:'22px'}}>Alertes</h3>
+                                        <p style={{color: alertes.length > 0 ? '#ef4444' : '#27ae60', fontSize:'18px', fontWeight:'bold'}}>
+                                            {alertes.length > 0 ? `${alertes.length} à traiter` : "RAS"}
+                                        </p>
+                                    </div>
+                                    <button style={styles.btnQuit} onClick={logout}>QUITTER LA GESTION</button>
+                                </div>
+                            )}
+
+                            {page === 'admin_vehicules' && (
+                                <div style={styles.adminCard}>
+                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+                                        <h2>Parc Automobile</h2>
+                                        <button onClick={() => {setEditingItem(null); setPage('admin_vehicules_edit')}} style={{backgroundColor:'#3b82f6', color:'white', border:'none', padding:'12px 24px', borderRadius:'12px', fontWeight:'bold'}}>+ AJOUTER</button>
+                                    </div>
+                                    <table style={styles.adminTable}>
+                                        <thead><tr><th style={styles.adminTh}>CallSign</th><th style={styles.adminTh}>Marque</th><th style={styles.adminTh}>Modèle</th><th style={styles.adminTh}>Immat</th><th style={styles.adminTh}>Statut</th><th style={styles.adminTh}>Actions</th></tr></thead>
+                                        <tbody>{vehicules.map(v => (
+                                            <tr key={v.id}><td style={styles.adminTd}>{v.callSign}</td><td style={styles.adminTd}>{v.marque}</td><td style={styles.adminTd}>{v.modele}</td><td style={styles.adminTd}>{v.immat}</td><td style={styles.adminTd}>{v.statut}</td><td style={styles.adminTd}><button onClick={async () => { if(window.confirm("Supprimer ?")) { await supabaseClient.from('vehicules').delete().eq('id', v.id); fetchData(); } }} style={{color:'#ef4444', background:'none', border:'none', cursor:'pointer'}}>Supprimer</button></td></tr>
+                                        ))}</tbody>
+                                    </table>
+                                    <button onClick={() => setPage('admin_dashboard')} style={styles.btnBack}>← Retour Menu</button>
+                                </div>
+                            )}
+
+                            {page === 'admin_suivi' && (
+                                <div style={styles.adminCard}>
+                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+                                        <h2>Historique Complet</h2>
+                                        <button onClick={() => exportCSV(voyages, 'hist')} style={{backgroundColor:'#27ae60', color:'white', border:'none', padding:'12px 24px', borderRadius:'12px', fontWeight:'bold'}}>📥 EXPORT CSV</button>
+                                    </div>
+                                    <table style={styles.adminTable}>
+                                        <thead><tr>
+                                            <th style={styles.adminTh}>Sortie</th><th style={styles.adminTh}>Retour</th>
+                                            <th style={styles.adminTh}>Conducteur</th><th style={styles.adminTh}>Véhicule</th>
+                                            <th style={styles.adminTh}>Destination</th><th style={styles.adminTh}>Motif</th>
+                                        </tr></thead>
+                                        <tbody>{voyages.map(v => {
+                                            const u = utilisateurs.find(usr => usr.id === v.userId);
+                                            const vh = vehicules.find(veh => veh.id === v.vehiculeId);
+                                            const dS = new Date(v.id);
+                                            const dR = v.date_retour ? new Date(v.date_retour) : null;
+                                            return (
+                                                <tr key={v.id}>
+                                                    <td style={styles.adminTd}>{dS.toLocaleDateString()}<br/><small style={{color:'#888'}}>{dS.toLocaleTimeString()}</small></td>
+                                                    <td style={styles.adminTd}>{dR ? dR.toLocaleDateString() : '-'}<br/><small style={{color:'#888'}}>{dR ? dR.toLocaleTimeString() : '-'}</small></td>
+                                                    <td style={styles.adminTd}>{u?.nom} {u?.prenom}</td><td style={styles.adminTd}>{vh?.callSign}</td>
+                                                    <td style={styles.adminTd}>{v.destination}</td><td style={styles.adminTd}>{v.motif}</td>
+                                                </tr>
+                                            );
+                                        })}</tbody>
+                                    </table>
+                                    <button onClick={() => setPage('admin_dashboard')} style={styles.btnBack}>← Retour Menu</button>
+                                </div>
+                            )}
+
+                            {page === 'admin_alertes' && (
+                                <div style={styles.adminCard}>
+                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+                                        <h2>Gestion des Alertes</h2>
+                                        <button onClick={() => exportCSV(alertes, 'alertes')} style={{backgroundColor:'#27ae60', color:'white', border:'none', padding:'12px 24px', borderRadius:'12px', fontWeight:'bold'}}>📥 EXPORT CSV</button>
+                                    </div>
+                                    <table style={styles.adminTable}>
+                                        <thead><tr>
+                                            <th style={styles.adminTh}>Date Signalement</th><th style={styles.adminTh}>Véhicule</th>
+                                            <th style={styles.adminTh}>Conducteur</th><th style={styles.adminTh}>Problèmes constatés</th><th style={styles.adminTh}>Action</th>
+                                        </tr></thead>
+                                        <tbody>{alertes.map(a => {
+                                            const vh = vehicules.find(v => v.id === a.vehiculeId);
+                                            const u = utilisateurs.find(usr => usr.id === a.userId);
+                                            return (
+                                                <tr key={a.id}>
+                                                    <td style={styles.adminTd}>{new Date(a.date_retour).toLocaleDateString()}</td>
+                                                    <td style={styles.adminTd}><b>{vh?.callSign}</b><br/>{vh?.marque} {vh?.modele}</td>
+                                                    <td style={styles.adminTd}>{u?.nom}</td>
+                                                    <td style={styles.adminTd}>
+                                                        {a.incidents.map(inc => (
+                                                            <span key={inc} style={{display:'inline-block', backgroundColor:'#ef4444', color:'white', padding:'4px 10px', borderRadius:'6px', fontSize:'11px', marginRight:'5px', marginBottom:'5px'}}>
+                                                                {labelsIncidents[inc] || inc}
+                                                            </span>
+                                                        ))}
+                                                    </td>
+                                                    <td style={styles.adminTd}>
+                                                        <button onClick={async () => { await supabaseClient.from('voyages').update({alerteResolue:true}).eq('id', a.id); fetchData(); }} style={{backgroundColor:'#27ae60', color:'white', border:'none', padding:'8px 15px', borderRadius:'8px', cursor:'pointer', fontWeight:'bold'}}>Résolu</button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}</tbody>
+                                    </table>
+                                    <button onClick={() => setPage('admin_dashboard')} style={styles.btnBack}>← Retour Menu</button>
+                                </div>
+                            )}
+
+                            {page === 'admin_users' && (
+                                <div style={styles.adminCard}>
+                                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'20px'}}><h2>Conducteurs</h2><button onClick={() => {setEditingItem(null); setPage('admin_users_edit')}} style={{backgroundColor:'#3b82f6', color:'white', border:'none', padding:'12px 24px', borderRadius:'12px', fontWeight:'bold'}}>+ AJOUTER</button></div>
+                                    <table style={styles.adminTable}>
+                                        <thead><tr><th style={styles.adminTh}>Nom</th><th style={styles.adminTh}>Statut</th><th style={styles.adminTh}>Actions</th></tr></thead>
+                                        <tbody>{utilisateurs.map(u => (
+                                            <tr key={u.id}><td style={styles.adminTd}>{u.nom} {u.prenom}</td><td style={styles.adminTd}>{u.statut || 'Actif'}</td><td style={styles.adminTd}><button onClick={() => {setEditingItem(u); setPage('admin_users_edit')}} style={{color:'#3b82f6', background:'none', border:'none'}}>Modifier</button></td></tr>
+                                        ))}</tbody>
+                                    </table>
+                                    <button onClick={() => setPage('admin_dashboard')} style={styles.btnBack}>← Retour Menu</button>
+                                </div>
+                            )}
+
+                            {page === 'admin_users_edit' && (
+                                <div style={{...styles.adminCard, maxWidth:'500px', margin:'auto'}}>
+                                    <h2>Gestion Conducteur</h2>
+                                    <form onSubmit={async (e) => {
+                                        e.preventDefault();
+                                        const d = new FormData(e.target);
+                                        const obj = { nom: d.get('n').toUpperCase(), prenom: d.get('p'), pin: d.get('pin'), statut: d.get('st') };
+                                        if(editingItem) await supabaseClient.from('utilisateurs').update(obj).eq('id', editingItem.id);
+                                        else await supabaseClient.from('utilisateurs').insert([obj]);
+                                        fetchData(); setPage('admin_users');
+                                    }}>
+                                        <input name="n" placeholder="NOM" defaultValue={editingItem?.nom} style={styles.adminInput} required />
+                                        <input name="p" placeholder="Prénom" defaultValue={editingItem?.prenom} style={styles.adminInput} required />
+                                        <input name="pin" placeholder="PIN" defaultValue={editingItem?.pin} style={styles.adminInput} maxLength="4" required />
+                                        <select name="st" defaultValue={editingItem?.statut || 'Actif'} style={styles.adminInput}><option value="Actif">Actif</option><option value="Inactif">Inactif</option></select>
+                                        <button type="submit" style={{...styles.btnAction, backgroundColor:'#3b82f6'}}>ENREGISTRER</button>
+                                    </form>
+                                    <button onClick={() => setPage('admin_users')} style={styles.btnBack}>Annuler</button>
+                                </div>
+                            )}
+
+                            {page === 'admin_vehicules_edit' && (
+                                <div style={{...styles.adminCard, maxWidth:'500px', margin:'auto'}}>
+                                    <h2>Ajouter un véhicule</h2>
+                                    <form onSubmit={async (e) => {
+                                        e.preventDefault();
+                                        const d = new FormData(e.target);
+                                        const obj = { callSign: d.get('cs'), marque: d.get('ma').toUpperCase(), modele: d.get('mo'), immat: d.get('im').toUpperCase(), statut: 'Libre' };
+                                        await supabaseClient.from('vehicules').insert([obj]);
+                                        fetchData(); setPage('admin_vehicules');
+                                    }}>
+                                        <input name="cs" placeholder="CallSign" style={styles.adminInput} required />
+                                        <input name="ma" placeholder="Marque" style={styles.adminInput} required />
+                                        <input name="mo" placeholder="Modèle" style={styles.adminInput} required />
+                                        <input name="im" placeholder="Immatriculation" style={styles.adminInput} required />
+                                        <button type="submit" style={{...styles.btnAction, backgroundColor:'#3b82f6'}}>ENREGISTRER</button>
+                                    </form>
+                                    <button onClick={() => setPage('admin_vehicules')} style={styles.btnBack}>Annuler</button>
                                 </div>
                             )}
                         </div>
                     </div>
+                );
+            }
 
-                    {/* VUE CONDUCTEUR */}
-                    {view === 'conducteur' && (
-                        <div style={{ background: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                            <h3>État des Véhicules</h3>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
-                                        <th style={{ padding: '10px', borderBottom: '2px solid #e2e8f0' }}>CallSign</th>
-                                        <th style={{ padding: '10px', borderBottom: '2px solid #e2e8f0' }}>Nom</th>
-                                        <th style={{ padding: '10px', borderBottom: '2px solid #e2e8f0' }}>Immatriculation</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {vehicules.map(v => (
-                                        <tr key={v.id}>
-                                            <td style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold' }}>{v.callSign}</td>
-                                            <td style={{ padding: '10px', borderBottom: '1px solid #e2e8f0' }}>{v.nom}</td>
-                                            <td style={{ padding: '10px', borderBottom: '1px solid #e2e8f0' }}>{v.immatriculation || '-'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+            // --- VUES CLIENT ---
+            return (
+                <div style={styles.container}>
+                    {errorMsg && <div style={styles.errorToast}>{errorMsg}</div>}
+                    {page === 'login' && (
+                        <div style={{...styles.card, marginTop: '50px'}}>
+                            <h1 style={styles.title}>Sillage</h1>
+                            <select style={styles.input} value={formLogin.id} onChange={e => setFormLogin({...formLogin, id: e.target.value})}>
+                                <option value="">Sélectionnez votre nom...</option>
+                                {utilisateursActifs.map(u => <option key={u.id} value={u.id}>{u.nom} {u.prenom}</option>)}
+                            </select>
+                            <input type="password" placeholder="CODE PIN" style={{...styles.input, textAlign: 'center'}} value={formLogin.pin} onChange={e => setFormLogin({...formLogin, pin: e.target.value})} />
+                            <button onClick={() => {
+                                const found = utilisateursActifs.find(u => u.id === parseInt(formLogin.id) && u.pin === formLogin.pin);
+                                if (found) { setUser(found); setPage('menu'); } else { showError("Code PIN erroné"); }
+                            }} style={{...styles.btnAction, backgroundColor: '#1a1a1a'}}>VALIDER</button>
+                            <button onClick={() => setPage('admin_login')} style={{position:'fixed', bottom:'20px', right:'20px', opacity:0.1, border:'none', background:'none'}}>Admin</button>
                         </div>
                     )}
-
-                    {/* VUE ADMIN */}
-                    {view === 'admin' && (
-                        <div>
-                            {/* ÉCRAN DE MODIFICATION (S'affiche uniquement quand on clique sur Modifier) */}
-                            {editingVehicule && (
-                                <div style={{ background: '#fef08a', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #fef08a' }}>
-                                    <h4>Modifier le véhicule : {editingVehicule.callSign}</h4>
-                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                        <input type="text" value={editingVehicule.callSign} onChange={(e) => setEditingVehicule({...editingVehicule, callSign: e.target.value})} placeholder="CallSign" style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                                        <input type="text" value={editingVehicule.nom} onChange={(e) => setEditingVehicule({...editingVehicule, nom: e.target.value})} placeholder="Nom du modèle" style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                                        <input type="text" value={editingVehicule.immatriculation || ''} onChange={(e) => setEditingVehicule({...editingVehicule, immatriculation: e.target.value})} placeholder="Immatriculation" style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                                        <button onClick={updateVehicule} style={{ padding: '8px 12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Enregistrer</button>
-                                        <button onClick={() => setEditingVehicule(null)} style={{ padding: '8px 12px', background: '#64748b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Annuler</button>
+                    {page === 'menu' && (
+                        <div style={{textAlign: 'center'}}>
+                            <h2 style={{fontSize: '28px'}}>Bonjour {user?.prenom}</h2>
+                            {!voyageActif ? (
+                                <button onClick={() => setPage('liste')} style={styles.btnAction}>SORTIE VÉHICULE</button>
+                            ) : (
+                                <div style={styles.card}>
+                                    <h3 style={{color: '#e67e22', fontSize: '28px', marginBottom: '10px'}}>RETOUR VÉHICULE</h3>
+                                    <p>Véhicule : <b>{vehicules.find(v => v.id === voyageActif.vehiculeId)?.callSign}</b></p>
+                                    <div style={{textAlign: 'left', margin: '20px 0'}}>
+                                        {Object.keys(retourOptions).map(key => {
+                                            const labels = labelsIncidents;
+                                            if(key === 'ras') return (
+                                                <label key={key} style={{display:'block', padding: '10px 0', fontSize:'18px', color: '#27ae60', fontWeight: 'bold'}}>
+                                                    <input type="checkbox" checked={retourOptions[key]} onChange={e => setRetourOptions({...retourOptions, [key]: e.target.checked})} /> 
+                                                    {" R.A.S."}
+                                                </label>
+                                            );
+                                            if(labels[key]) return (
+                                                <label key={key} style={{display:'block', padding: '8px 0', fontSize:'18px'}}>
+                                                    <input type="checkbox" checked={retourOptions[key]} onChange={e => setRetourOptions({...retourOptions, [key]: e.target.checked})} /> 
+                                                    {" " + labels[key]}
+                                                </label>
+                                            );
+                                        })}
                                     </div>
+                                    <button onClick={async () => {
+                                        const incidents = Object.keys(retourOptions).filter(k => retourOptions[k] && k !== 'ras');
+                                        await supabaseClient.from('vehicules').update({statut:'Libre'}).eq('id', voyageActif.vehiculeId);
+                                        await supabaseClient.from('voyages').update({actif:false, incidents, date_retour: Date.now()}).eq('id', voyageActif.id);
+                                        logout();
+                                    }} style={{...styles.btnAction, backgroundColor: '#e67e22'}}>VALIDER LE RETOUR</button>
                                 </div>
                             )}
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                                {/* Gestion des Véhicules */}
-                                <div style={{ background: 'white', padding: '20px', borderRadius: '8px' }}>
-                                    <h3>Gestion des Véhicules</h3>
-                                    <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
-                                        <input type="text" placeholder="CallSign" value={newVehicule.callSign} onChange={(e) => setNewVehicule({...newVehicule, callSign: e.target.value})} style={{ width: '25%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                                        <input type="text" placeholder="Nom du modèle" value={newVehicule.nom} onChange={(e) => setNewVehicule({...newVehicule, nom: e.target.value})} style={{ width: '40%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                                        <input type="text" placeholder="Immat" value={newVehicule.immatriculation} onChange={(e) => setNewVehicule({...newVehicule, immatriculation: e.target.value})} style={{ width: '25%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                                        <button onClick={addVehicule} style={{ padding: '8px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+</button>
-                                    </div>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                        <tbody>
-                                            {vehicules.map(v => (
-                                                <tr key={v.id}>
-                                                    <td style={{ padding: '8px', borderBottom: '1px solid #e2e8f0' }}><b>{v.callSign}</b> - {v.nom}</td>
-                                                    <td style={{ padding: '8px', borderBottom: '1px solid #e2e8f0', textAlign: 'right' }}>
-                                                        {/* BOUTON MODIFIER AJOUTÉ */}
-                                                        <button onClick={() => setEditingVehicule(v)} style={{ marginRight: '5px', padding: '4px 8px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Modifier</button>
-                                                        <button onClick={() => deleteVehicule(v.id)} style={{ padding: '4px 8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>X</button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                            <button onClick={logout} style={styles.btnBack}>Quitter la session</button>
+                        </div>
+                    )}
+                    {page === 'liste' && (
+                        <div style={styles.card}>
+                            <h3>CHOISIR LE VÉHICULE</h3>
+                            {vehiculesLibres.map(v => (
+                                <div key={v.id} onClick={() => { setSelectedV(v); setPage('form'); }} style={{ padding: '25px', marginBottom: '12px', background: '#f8fafc', borderRadius: '20px', cursor: 'pointer', borderLeft: '10px solid #27ae60', textAlign:'left' }}>
+                                    <b style={{fontSize:'20px'}}>{v.callSign}</b> — {v.marque} {v.modele}
                                 </div>
-
-                                {/* Gestion des Utilisateurs */}
-                                <div style={{ background: 'white', padding: '20px', borderRadius: '8px' }}>
-                                    <h3>Gestion des Conducteurs</h3>
-                                    <div style={{ display: 'flex', gap: '5px', marginBottom: '15px', flexWrap: 'wrap' }}>
-                                        <input type="text" placeholder="Nom" value={newUtilisateur.nom} onChange={(e) => setNewUtilisateur({...newUtilisateur, nom: e.target.value})} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', width: '30%' }} />
-                                        <input type="text" placeholder="Prénom" value={newUtilisateur.prenom} onChange={(e) => setNewUtilisateur({...newUtilisateur, prenom: e.target.value})} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', width: '30%' }} />
-                                        <input type="text" placeholder="PIN" value={newUtilisateur.pin} onChange={(e) => setNewUtilisateur({...newUtilisateur, pin: e.target.value})} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', width: '20%' }} />
-                                        <button onClick={addUtilisateur} style={{ padding: '8px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+</button>
-                                    </div>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                        <tbody>
-                                            {utilisateurs.map(u => (
-                                                <tr key={u.id}>
-                                                    <td style={{ padding: '8px', borderBottom: '1px solid #e2e8f0' }}>{u.nom.toUpperCase()} {u.prenom} (Code: {u.pin})</td>
-                                                    <td style={{ padding: '8px', borderBottom: '1px solid #e2e8f0', textAlign: 'right' }}>
-                                                        <button onClick={() => deleteUtilisateur(u.id)} style={{ padding: '4px 8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>X</button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                            ))}
+                            <button onClick={() => setPage('menu')} style={styles.btnBack}>← Retour</button>
+                        </div>
+                    )}
+                    {page === 'form' && (
+                        <div style={styles.card}>
+                            <h3>SORTIE : {selectedV?.callSign}</h3>
+                            <input placeholder="Destination" style={styles.input} value={sortieData.destination} onChange={e => setSortieData({...sortieData, destination: e.target.value})} />
+                            <input placeholder="Motif" style={styles.input} value={sortieData.motif} onChange={e => setSortieData({...sortieData, motif: e.target.value})} />
+                            <button onClick={async () => {
+                                if(!sortieData.destination || !sortieData.motif) return showError("Saisies requises");
+                                await supabaseClient.from('vehicules').update({statut:'Occupé'}).eq('id', selectedV.id);
+                                await supabaseClient.from('voyages').insert([{ id: Date.now(), userId: user.id, vehiculeId: selectedV.id, destination: sortieData.destination, motif: sortieData.motif, actif: true }]);
+                                setPage('confirmation');
+                            }} style={styles.btnAction}>CONFIRMER</button>
+                            <button onClick={() => setPage('liste')} style={styles.btnBack}>← Retour</button>
+                        </div>
+                    )}
+                    {page === 'confirmation' && (
+                        <div style={{...styles.card, minHeight: '80vh', display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
+                            <h1 style={styles.title}>Sillage</h1>
+                            <div style={{backgroundColor: '#f8fafc', padding: '30px', borderRadius: '25px', marginBottom: '30px'}}>
+                                <h2 style={{fontSize: '24px', color: '#1a1a1a'}}>Tu as pris le {selectedV?.callSign} — {selectedV?.marque} {selectedV?.modele}</h2>
                             </div>
+                            <p style={{fontSize: '22px', color: '#888', marginBottom:'10px'}}>Respecte le code de la route,</p>
+                            <p style={{fontSize: '28px', fontWeight: 'bold', color: '#27ae60'}}>Bonne route {user?.prenom} !</p>
+                            <button onClick={logout} style={{...styles.btnAction, marginTop: '40px', backgroundColor:'#1a1a1a'}}>DÉPART</button>
                         </div>
                     )}
                 </div>
