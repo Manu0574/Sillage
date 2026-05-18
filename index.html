@@ -22,15 +22,9 @@
         const SUPABASE_URL = 'https://elypwtcxglccsfmhudei.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_C26zYE5SpRKRgXYpsCDrpw_ggLVR7Aa'; 
         
-        // On force l'application à cibler explicitement la branche 'main' de production
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-            db: {
-                schema: 'public'
-            },
-            headers: {
-                'x-supabase-branch': 'main'
-            }
-        });
+        // Configuration standard du client Supabase
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
         const styles = {
             container: { maxWidth: '600px', margin: 'auto', padding: '20px', minHeight: '100vh' },
             card: { backgroundColor: 'white', padding: '40px', borderRadius: '30px', boxShadow: '0 15px 35px rgba(0,0,0,0.05)', textAlign: 'center' },
@@ -40,7 +34,6 @@
             btnBack: { marginTop: '20px', background: 'none', border: 'none', color: '#888', textDecoration: 'underline', cursor: 'pointer', fontSize: '16px' },
             adminContainer: { backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '20px', boxSizing: 'border-box' },
             adminCard: { backgroundColor: '#1e293b', padding: '25px', borderRadius: '24px', border: '1px solid #334155', width: '100%', boxSizing: 'border-box', overflowX: 'auto' },
-            // Nouvelle Grille 2x2
             adminGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' },
             adminTile: { backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '24px', padding: '40px 20px', cursor: 'pointer', textAlign: 'center', transition: 'transform 0.2s' },
             btnQuit: { gridColumn: 'span 2', marginTop: '10px', padding: '25px', borderRadius: '24px', backgroundColor: 'transparent', border: '2px solid #ef4444', color: '#ef4444', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer' },
@@ -86,7 +79,6 @@
                 let csv = type === 'hist' 
                     ? "Date Sortie;Heure Sortie;Date Retour;Heure Retour;Conducteur;Vehicule;Destination;Motif;Incidents\n"
                     : "Date Alerte;Vehicule;Marque;Modele;Conducteur;Problemes\n";
-                
                 data.forEach(v => {
                     const u = utilisateurs.find(usr => usr.id === v.userId);
                     const vh = vehicules.find(veh => veh.id === v.vehiculeId);
@@ -106,7 +98,8 @@
             };
 
             const logout = () => {
-                setUser(null); setPage('login'); setFormLogin({id:'', pin:''}); setAdminPin(''); 
+                setUser(null);
+                setPage('login'); setFormLogin({id:'', pin:''}); setAdminPin(''); 
                 setSelectedV(null); setSortieData({destination:'', motif:''});
                 setRetourOptions({ plein: false, voyant: false, niveaux: false, bruit: false, nettoyage: false, accident: false, infraction: false, probleme: false, ras: false });
                 fetchData();
@@ -172,7 +165,17 @@
                                     <table style={styles.adminTable}>
                                         <thead><tr><th style={styles.adminTh}>CallSign</th><th style={styles.adminTh}>Marque</th><th style={styles.adminTh}>Modèle</th><th style={styles.adminTh}>Immat</th><th style={styles.adminTh}>Statut</th><th style={styles.adminTh}>Actions</th></tr></thead>
                                         <tbody>{vehicules.map(v => (
-                                            <tr key={v.id}><td style={styles.adminTd}>{v.callSign}</td><td style={styles.adminTd}>{v.marque}</td><td style={styles.adminTd}>{v.modele}</td><td style={styles.adminTd}>{v.immat}</td><td style={styles.adminTd}>{v.statut}</td><td style={styles.adminTd}><button onClick={async () => { if(window.confirm("Supprimer ?")) { await supabaseClient.from('vehicules').delete().eq('id', v.id); fetchData(); } }} style={{color:'#ef4444', background:'none', border:'none', cursor:'pointer'}}>Supprimer</button></td></tr>
+                                            <tr key={v.id}>
+                                                <td style={styles.adminTd}>{v.callSign}</td>
+                                                <td style={styles.adminTd}>{v.marque}</td>
+                                                <td style={styles.adminTd}>{v.modele}</td>
+                                                <td style={styles.adminTd}>{v.immat}</td>
+                                                <td style={styles.adminTd}>{v.statut}</td>
+                                                <td style={styles.adminTd}>
+                                                    <button onClick={() => {setEditingItem(v); setPage('admin_vehicules_edit')}} style={{color:'#3b82f6', background:'none', border:'none', cursor:'pointer', marginRight:'15px'}}>Modifier</button>
+                                                    <button onClick={async () => { if(window.confirm("Supprimer ?")) { await supabaseClient.from('vehicules').delete().eq('id', v.id); fetchData(); } }} style={{color:'#ef4444', background:'none', border:'none', cursor:'pointer'}}>Supprimer</button>
+                                                </td>
+                                            </tr>
                                         ))}</tbody>
                                     </table>
                                     <button onClick={() => setPage('admin_dashboard')} style={styles.btnBack}>← Retour Menu</button>
@@ -253,7 +256,7 @@
                                     <table style={styles.adminTable}>
                                         <thead><tr><th style={styles.adminTh}>Nom</th><th style={styles.adminTh}>Statut</th><th style={styles.adminTh}>Actions</th></tr></thead>
                                         <tbody>{utilisateurs.map(u => (
-                                            <tr key={u.id}><td style={styles.adminTd}>{u.nom} {u.prenom}</td><td style={styles.adminTd}>{u.statut || 'Actif'}</td><td style={styles.adminTd}><button onClick={() => {setEditingItem(u); setPage('admin_users_edit')}} style={{color:'#3b82f6', background:'none', border:'none'}}>Modifier</button></td></tr>
+                                            <tr key={u.id}><td style={styles.adminTd}>{u.nom} {u.prenom}</td><td style={styles.adminTd}>{u.statut || 'Actif'}</td><td style={styles.adminTd}><button onClick={() => {setEditingItem(u); setPage('admin_users_edit')}} style={{color:'#3b82f6', background:'none', border:'none', cursor:'pointer'}}>Modifier</button></td></tr>
                                         ))}</tbody>
                                     </table>
                                     <button onClick={() => setPage('admin_dashboard')} style={styles.btnBack}>← Retour Menu</button>
@@ -283,18 +286,27 @@
 
                             {page === 'admin_vehicules_edit' && (
                                 <div style={{...styles.adminCard, maxWidth:'500px', margin:'auto'}}>
-                                    <h2>Ajouter un véhicule</h2>
+                                    <h2>{editingItem ? "Modifier le véhicule" : "Ajouter un véhicule"}</h2>
                                     <form onSubmit={async (e) => {
                                         e.preventDefault();
                                         const d = new FormData(e.target);
-                                        const obj = { callSign: d.get('cs'), marque: d.get('ma').toUpperCase(), modele: d.get('mo'), immat: d.get('im').toUpperCase(), statut: 'Libre' };
-                                        await supabaseClient.from('vehicules').insert([obj]);
+                                        const obj = { 
+                                            callSign: d.get('cs'), 
+                                            marque: d.get('ma').toUpperCase(), 
+                                            modele: d.get('mo'), 
+                                            immat: d.get('im').toUpperCase()
+                                        };
+                                        if(editingItem) {
+                                            await supabaseClient.from('vehicules').update(obj).eq('id', editingItem.id);
+                                        } else {
+                                            await supabaseClient.from('vehicules').insert([{...obj, statut: 'Libre'}]);
+                                        }
                                         fetchData(); setPage('admin_vehicules');
                                     }}>
-                                        <input name="cs" placeholder="CallSign" style={styles.adminInput} required />
-                                        <input name="ma" placeholder="Marque" style={styles.adminInput} required />
-                                        <input name="mo" placeholder="Modèle" style={styles.adminInput} required />
-                                        <input name="im" placeholder="Immatriculation" style={styles.adminInput} required />
+                                        <input name="cs" placeholder="CallSign" defaultValue={editingItem?.callSign} style={styles.adminInput} required />
+                                        <input name="ma" placeholder="Marque" defaultValue={editingItem?.marque} style={styles.adminInput} required />
+                                        <input name="mo" placeholder="Modèle" defaultValue={editingItem?.modele} style={styles.adminInput} required />
+                                        <input name="im" placeholder="Immatriculation" defaultValue={editingItem?.immat} style={styles.adminInput} required />
                                         <button type="submit" style={{...styles.btnAction, backgroundColor:'#3b82f6'}}>ENREGISTRER</button>
                                     </form>
                                     <button onClick={() => setPage('admin_vehicules')} style={styles.btnBack}>Annuler</button>
