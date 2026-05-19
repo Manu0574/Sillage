@@ -22,8 +22,15 @@
         const SUPABASE_URL = 'https://elypwtcxglccsfmhudei.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_C26zYE5SpRKRgXYpsCDrpw_ggLVR7Aa'; 
         
-        // Configuration standard du client Supabase
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        // On force l'application à cibler explicitement la branche 'main' de production
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+            db: {
+                schema: 'public'
+            },
+            headers: {
+                'x-supabase-branch': 'main'
+            }
+        });
 
         const styles = {
             container: { maxWidth: '600px', margin: 'auto', padding: '20px', minHeight: '100vh' },
@@ -172,6 +179,7 @@
                                                 <td style={styles.adminTd}>{v.immat}</td>
                                                 <td style={styles.adminTd}>{v.statut}</td>
                                                 <td style={styles.adminTd}>
+                                                    {/* BOUTON MODIFIER BRANCHÉ SUR TON COMPOSANT EXISTANT */}
                                                     <button onClick={() => {setEditingItem(v); setPage('admin_vehicules_edit')}} style={{color:'#3b82f6', background:'none', border:'none', cursor:'pointer', marginRight:'15px'}}>Modifier</button>
                                                     <button onClick={async () => { if(window.confirm("Supprimer ?")) { await supabaseClient.from('vehicules').delete().eq('id', v.id); fetchData(); } }} style={{color:'#ef4444', background:'none', border:'none', cursor:'pointer'}}>Supprimer</button>
                                                 </td>
@@ -290,15 +298,13 @@
                                     <form onSubmit={async (e) => {
                                         e.preventDefault();
                                         const d = new FormData(e.target);
-                                        const obj = { 
-                                            callSign: d.get('cs'), 
-                                            marque: d.get('ma').toUpperCase(), 
-                                            modele: d.get('mo'), 
-                                            immat: d.get('im').toUpperCase()
-                                        };
+                                        const obj = { callSign: d.get('cs'), marque: d.get('ma').toUpperCase(), modele: d.get('mo'), immat: d.get('im').toUpperCase() };
+                                        
                                         if(editingItem) {
+                                            // Si on modifie, on met à jour l'élément sans écraser le statut existant
                                             await supabaseClient.from('vehicules').update(obj).eq('id', editingItem.id);
                                         } else {
+                                            // Si on crée, on ajoute le statut par défaut Libre
                                             await supabaseClient.from('vehicules').insert([{...obj, statut: 'Libre'}]);
                                         }
                                         fetchData(); setPage('admin_vehicules');
@@ -394,7 +400,7 @@
                                 await supabaseClient.from('vehicules').update({statut:'Occupé'}).eq('id', selectedV.id);
                                 await supabaseClient.from('voyages').insert([{ id: Date.now(), userId: user.id, vehiculeId: selectedV.id, destination: sortieData.destination, motif: sortieData.motif, actif: true }]);
                                 setPage('confirmation');
-                            }} style={styles.btnAction}>CONFIRMER</button>
+                            }} style={{...styles.btnAction, backgroundColor: '#27ae60'}}>CONFIRMER</button>
                             <button onClick={() => setPage('liste')} style={styles.btnBack}>← Retour</button>
                         </div>
                     )}
